@@ -112,35 +112,7 @@ endif()
 
 include(CheckCXXCompilerFlag)
 
-# Check for C++ standard to use
-get_property(known_features GLOBAL PROPERTY CMAKE_CXX_KNOWN_FEATURES)
-if (cxx_std_17 IN_LIST known_features)
-    set(CMAKE_CXX_STANDARD 17)
-elseif (cxx_std_14 IN_LIST known_features)
-    set(CMAKE_CXX_STANDARD 14)
-else()  # minimum required standard
-    set(CMAKE_CXX_STANDARD 11)
-endif()
-
-if ("${CMAKE_CXX17_STANDARD_COMPILE_OPTION}" STREQUAL "")
-    set(CMAKE_CXX_STANDARD 14)
-endif()
-if ("${CMAKE_CXX14_STANDARD_COMPILE_OPTION}" STREQUAL "")
-    set(CMAKE_CXX_STANDARD 11)
-endif()
-
-# Avoid using experimental c++1y (c++1z) standard even if the compiler announces cxx14 (cxx17)
-# in CMAKE_CXX_KNOWN_FEATURES and CMAKE_CXX_COMPILE_FEATURES
-# It is the case of clang 3.9, 4.0 (announces c++1z) and gcc 4.8 (announces c++1y)
-if ("${CMAKE_CXX17_STANDARD_COMPILE_OPTION}" STREQUAL "-std=c++1z")
-  set(CMAKE_CXX_STANDARD 14)
-endif()
-if ("${CMAKE_CXX14_STANDARD_COMPILE_OPTION}" STREQUAL "-std=c++1y")
-  set(CMAKE_CXX_STANDARD 11)
-endif()
-# temporarily
 set(CMAKE_CXX_STANDARD 17)
-
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -160,7 +132,11 @@ endif()
 
 CHECK_CXX_COMPILER_FLAG("-march=native" COMPILER_SUPPORTS_MARCH_NATIVE)
 if(COMPILER_SUPPORTS_MARCH_NATIVE)
-    set(MARCH_NATIVE_FLAGS "${MARCH_NATIVE_FLAGS} -march=native -mtune=native")
+    set(MARCH_NATIVE_FLAGS "${MARCH_NATIVE_FLAGS} -march=native")
+    if(NOT CLANG AND MSVC)
+        # clang-cl does not know this argument
+        set(MARCH_NATIVE_FLAGS "${MARCH_NATIVE_FLAGS} -mtune=native")
+    endif()
     set(MARCH_NATIVE_OPT ON)
 endif()
 
@@ -236,6 +212,16 @@ if(MSVC)
         set(HAVE_SSE4_1 ON)
         add_definitions("-DHAVE_SSE4_1")
     endif()
+    # clang with MSVC compatibility
+    if(CLANG)
+       set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-microsoft-unqualified-friend")
+       if(HAVE_FMA)
+           set(FMA_COMPILE_FLAGS "-mfma ${FMA_COMPILE_FLAGS}")
+       endif(HAVE_FMA)
+       if(HAVE_SSE4_1)
+           set(SSE4_1_COMPILE_FLAGS "-msse4.1 ${SSE4_1_COMPILE_FLAGS}")
+       endif(HAVE_SSE4_1)
+    endif(CLANG)
 endif(MSVC)
 
 endif(AARCH64)
@@ -258,6 +244,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR MINGW)
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wall -DDEBUG -pedantic -Og")
 elseif(MSVC)
     add_definitions(-D_CRT_SECURE_NO_WARNINGS)
+    add_definitions(-D_CRT_NONSTDC_NO_DEPRECATE)  # strdup
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /utf-8")
     if (NOT CLANG)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
@@ -527,7 +514,6 @@ if (DISABLED_LEGACY_ENGINE)
         src/classify/intproto.cpp
         src/classify/kdtree.cpp
         src/classify/mf.cpp
-        src/classify/mfdefs.cpp
         src/classify/mfoutline.cpp
         src/classify/mfx.cpp
         src/classify/normfeat.cpp
@@ -733,7 +719,6 @@ install(FILES
     include/tesseract/renderer.h
     ${CMAKE_CURRENT_BINARY_DIR}/include/tesseract/version.h
 
-    include/tesseract/thresholder.h
     include/tesseract/ltrresultiterator.h
     include/tesseract/pageiterator.h
     include/tesseract/resultiterator.h
